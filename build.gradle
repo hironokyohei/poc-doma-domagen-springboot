@@ -1,0 +1,186 @@
+buildscript {
+    ext {
+        springBootVersion = '3.1.5-SNAPSHOT'
+    }
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+        maven {url 'https://oss.sonatype.org/content/repositories/snapshots/'}
+    }
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+        classpath("io.spring.gradle:dependency-management-plugin:0.5.3.RELEASE")
+        // for Grgit
+        classpath("org.ajoberstar:grgit:1.4.1")
+    }
+}
+
+plugins {
+    id "java"
+    id "eclipse"
+    id "idea"
+    id("org.springframework.boot") version "3.1.5"
+
+    // for Doma 2
+    id 'com.diffplug.eclipse.apt' version '3.25.0'
+    id 'org.seasar.doma.compile' version '1.1.0'
+}
+
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+compileJava.options.compilerArgs = ['-Xlint:all']
+
+// for Doma 2
+// JavaクラスとSQLファイルの出力先ディレクトリを同じにする
+processResources.destinationDir = compileJava.destinationDir
+// コンパイルより前にSQLファイルを出力先ディレクトリにコピーするために依存関係を逆転する
+compileJava.dependsOn processResources
+
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+
+jar {
+    baseName = 'poc-doma-domagen-springboot'
+    version = '0.0.1-SNAPSHOT'
+}
+
+idea {
+    module {
+        inheritOutputDirs = true
+        outputDir = file("$buildDir/classes/main/")
+    }
+}
+
+configurations {
+    domaGenRuntime
+}
+
+repositories {
+    google()
+    mavenCentral()
+    jcenter()
+}
+
+dependencies {
+    def mysqlConnector = "mysql:mysql-connector-java:8.0.13"
+    def domaVersion = "2.19.3"
+
+    // spring-boot-gradle-plugin によりバージョン番号が自動で設定されるもの
+    // Appendix E. Dependency versions ( http://docs.spring.io/spring-boot/docs/current/reference/html/appendix-dependency-versions.html ) 参照
+    implementation 'org.springframework.boot:spring-boot-starter-web:2.7.12'
+    implementation('org.springframework.boot:spring-boot-starter-thymeleaf:2.7.8')
+    implementation('org.springframework.boot:spring-boot-starter-data-jpa:2.5.15')
+    implementation('org.codehaus.janino:janino:3.1.9')
+    testImplementation('org.springframework.boot:spring-boot-starter-test:2.7.8')
+
+    // spring-boot-gradle-plugin によりバージョン番号が自動で設定されないもの
+    implementation("${mysqlConnector}")
+    implementation("org.seasar.doma.boot:doma-spring-boot-starter:1.1.1") {
+        exclude group: 'org.springframework.boot'
+    }
+    implementation("org.bgee.log4jdbc-log4j2:log4jdbc-log4j2-jdbc4.1:1.16")
+    implementation("org.apache.commons:commons-lang3:3.4")
+//    implementation("org.projectlombok:lombok:1.16.6")
+    testImplementation("org.dbunit:dbunit:2.5.1")
+    testImplementation("org.assertj:assertj-core:3.2.0")
+    testImplementation("org.jmockit:jmockit:1.19")
+
+    // for Doma 2
+    implementation "org.seasar.doma:doma-core:2.54.0"
+    annotationProcessor "org.seasar.doma:doma-processor:2.54.0"
+
+    annotationProcessor("org.seasar.doma.boot:doma-spring-boot-starter:1.1.1")
+
+    // annotation
+    implementation 'javax.annotation:javax.annotation-api:1.3.1'
+    annotationProcessor("javax.annotation:javax.annotation-api:1.3.2")
+
+    // for Doma-Gen
+    domaGenRuntime("org.seasar.doma:doma-gen:${domaVersion}")
+    domaGenRuntime("${mysqlConnector}")
+}
+
+bootRun {
+    jvmArgs = ['-Dspring.profiles.active=develop']
+}
+
+//test {
+//    jvmArgs = ['-Dspring.profiles.active=unittest']
+//}
+
+// for Doma-Gen
+task domaGen {
+    doLast {
+        // まず変更が必要なもの
+        def rootPackageName  = 'project.webapp'
+        def daoPackagePath   = 'src/main/java/project/webapp/dao'
+        def dbUrl            = 'jdbc:mysql://localhost:3306/sample'
+        def dbUser           = 'docker'
+        def dbPassword       = 'docker'
+        def tableNamePattern = 'users'
+        // おそらく変更不要なもの
+        def importOfComponentAndAutowiredDomaConfig = "${rootPackageName}.util.doma.ComponentAndAutowiredDomaConfig"
+        def workDirPath      = 'work'
+        def workDaoDirPath   = "${workDirPath}/dao"
+
+        // 作業用ディレクトリを削除する
+        clearDir("${workDirPath}")
+
+        // 現在の Dao インターフェースのバックアップを取得する
+        copy() {
+            from "${daoPackagePath}"
+            into "${workDaoDirPath}/org"
+        }
+
+        // Dao インターフェース、Entity クラスを生成する
+        ant.taskdef(resource: 'domagentask.properties',
+                classpath: configurations.domaGenRuntime.asPath)
+        ant.gen(url: "${dbUrl}", user: "${dbUser}", password: "${dbPassword}", tableNamePattern: "${tableNamePattern}") {
+            entityConfig(generate: true, packageName: "${rootPackageName}.entity", useListener: false)
+            daoConfig(generate: true, packageName: "${rootPackageName}.dao")
+            sqlConfig(generate: true, destDir: "src/main/resources")
+        }
+
+        // 生成された Dao インターフェースを作業用ディレクトリにコピーし、
+        // @ComponentAndAutowiredDomaConfig アノテーションを付加する
+        copy() {
+            from "${daoPackagePath}"
+            into "${workDaoDirPath}/replace"
+            filter {
+                line -> line.replaceAll('import org.seasar.doma.Dao;', "import ${importOfComponentAndAutowiredDomaConfig};\nimport org.seasar.doma.Dao;")
+                        .replaceAll('@Dao', '@Dao\n@ComponentAndAutowiredDomaConfig')
+            }
+        }
+
+        // @ComponentAndAutowiredDomaConfig アノテーションを付加した Dao インターフェースを
+        // dao パッケージへ戻す
+        copy() {
+            from "${workDaoDirPath}/replace"
+            into "${daoPackagePath}"
+        }
+
+        // 元々 dao パッケージ内にあったファイルを元に戻す
+        copy() {
+            from "${workDaoDirPath}/org"
+            into "${daoPackagePath}"
+        }
+
+        // 作業用ディレクトリを削除する
+        clearDir("${workDirPath}")
+
+        // 自動生成したファイルを git add する
+        addGit()
+    }
+}
+
+void clearDir(String dirPath) {
+    delete dirPath
+}
+
+void addGit() {
+    def grgit = org.ajoberstar.grgit.Grgit.open(dir: project.projectDir)
+    grgit.add(patterns: ['.'])
+}

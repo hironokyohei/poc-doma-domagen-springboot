@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>sample</title>
+</head>
+<body>
+<ol>
+    <div th:with="x=1,y=2">
+        <p>追加完了</p>
+        <p th:text="${user1.id}"></p>
+        <p th:text="${user2.id}"></p>
+    </div>
+</ol>
+</body>
+</html>

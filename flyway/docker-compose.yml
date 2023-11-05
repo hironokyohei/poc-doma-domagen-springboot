@@ -1,0 +1,40 @@
+version: '3.4'
+
+x-template: &flyway-template
+  image: flyway/flyway:6.0.1
+  volumes:
+    - ./sql:/flyway/sql
+    - ./conf:/flyway/conf
+
+services:
+  flyway-clean:
+    <<: *flyway-template
+    command: clean
+
+  flyway-migrate:
+    <<: *flyway-template
+    command: migrate
+
+  flyway-info:
+    <<: *flyway-template
+    command: info
+
+  flyway-repair:
+    <<: *flyway-template
+    command: repair
+
+  db:
+    image: mysql:8.0
+    platform: linux/arm64/v8
+    volumes:
+      - ./mysql/:/var/lib/mysql/
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sample
+      MYSQL_USER: docker
+      MYSQL_PASSWORD: docker
+      TZ: 'Asia/Tokyo'
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - 3306:3306
+    user: 1000:1000

@@ -96,7 +96,7 @@ public class SampleController
         return "sample/bulk_insert_complete";
     }
 
-    // http://localhost:8080/sample/bulkInsert?identityId1=hirono_10&identityId2=hirono_11
+    // http://localhost:8080/sample/batchInsertWithSQLFile?id1=3&id2=4
     @RequestMapping("/batchInsertWithSQLFile")
     public String batchInsertWithSQLFile(int id1, int id2, Model model) {
         Users user1 = new Users();
@@ -117,6 +117,35 @@ public class SampleController
         model.addAttribute("user2", user2);
 
         return "sample/bulk_insert_complete";
+    }
+
+    // http://localhost:8080/sample/batchUpdate?id1=3&updateName1=AAAA&id2=4&updateName2=BBBB
+    @RequestMapping("/batchUpdate")
+    public String batchUpdate(int id1, String updateName1, int id2, String updateName2, Model model) {
+        Users user1 = usersDao.selectById(id1);
+        user1.setName(updateName1);
+
+        Users user2 = usersDao.selectById(id2);
+        user2.setName(updateName2);
+
+        usersBulkDao.updateBatch(Arrays.asList(user1, user2));
+        model.addAttribute("user1", user1);
+        model.addAttribute("user2", user2);
+
+        return "sample/bulk_update_complete";
+    }
+
+    // http://localhost:8080/sample/batchDelete?id1=3&id2=4
+    @RequestMapping("/batchDelete")
+    public String batchDelete(int id1, int id2, Model model) {
+        Users user1 = usersDao.selectById(id1);
+        Users user2 = usersDao.selectById(id2);
+
+        usersBulkDao.deleteBatch(Arrays.asList(user1, user2));
+        model.addAttribute("user1", user1);
+        model.addAttribute("user2", user2);
+
+        return "sample/bulk_delete_complete";
     }
 }
 
